@@ -1,8 +1,8 @@
 import os
 import time
-
+import csv
 # Type hinting
-from typing import List
+from typing import List, Tuple
 
 # Logging
 import logging
@@ -18,13 +18,30 @@ class Work:
         self.durationFirst: int = durationFirst
         self.durationSecond: int = durationSecond
         self.timeFirst: int = None
+        self.timeSecond: int = None
+        self.timeBuffer: int = None
+        self.machineFirstId: int = None
+        self.machineSecondId: int = None
+        self.machineBufferId: int = None
 
     def getTimeEndFirst(self) -> str:
         return self.timeFirst + self.durationFirst
 
+    def getTimeEndSecond(self) -> str:
+        return self.timeSecond + self.durationSecond
 
-TEST_SIZE: int = 2000
-TEST_NUM: int = 10
+    def getFirstTiming(self) -> Tuple[int, int]:
+        return (self.timeFirst, self.getTimeEndFirst())
+
+    def getSecondTiming(self) -> Tuple[int, int]:
+        return (self.timeSecond, self.getTimeEndSecond())
+
+    def getBufferTiming(self) -> Tuple[int, int]:
+        return (self.timeBuffer, self.timeSecond)
+
+
+TEST_SIZE: int = 200
+TEST_NUM: int = 0
 TEST_PATH: str = 'tests/'
 TEST_DATA: List[Work] = []
 
@@ -36,8 +53,10 @@ BUFFER_SIZE: int = 3
 
 currentTime: int = 0
 firstStage: List[Work] = []
-secondStage: int = []  # время освобождение
+secondStage: List[Work] = []  # время освобождение
 buffer: List[Work] = []
+
+RESULT_WORKS: List[Work] = []
 
 
 def loadTests(file_path: str = None) -> List[Work]:
@@ -55,16 +74,16 @@ def updateSecond():
     """
         Function pop all ready tasks from second line
     """
-    global secondStage
+    global secondStage, RESULT_WORKS
     if not secondStage:
         return
-    minSecond = min(secondStage)
-    while currentTime >= minSecond:
+    minSecond = min(secondStage, key=lambda x: x.getTimeEndSecond())
+    while currentTime >= minSecond.getTimeEndSecond():
         minSecondIdx = secondStage.index(minSecond)
-        secondStage.pop(minSecondIdx)
+        RESULT_WORKS.append(secondStage.pop(minSecondIdx))
         if not secondStage:
             return
-        minSecond = min(secondStage)
+        minSecond = min(secondStage, key=lambda x: x.getTimeEndSecond())
 
 
 def updateBuffer():
@@ -76,7 +95,9 @@ def updateBuffer():
         return
     while len(secondStage) < SECOND_STAGE_SIZE and buffer:
         work = buffer.pop(0)
-        secondStage.append(currentTime + work.durationSecond)
+        work.timeSecond = currentTime
+        work.machineSecondId = len(secondStage)
+        secondStage.append(work)
 
 
 def updateFirst():
@@ -88,13 +109,17 @@ def updateFirst():
         minFirst = min(firstStage, key=lambda x: x.getTimeEndFirst())
     while firstStage and currentTime >= minFirst.getTimeEndFirst() and len(buffer) < BUFFER_SIZE:
         minFirstIdx = firstStage.index(minFirst)
-        buffer.append(firstStage.pop(minFirstIdx))
+        work = firstStage.pop(minFirstIdx)
+        work.timeBuffer = currentTime
+        work.machineBufferId = len(buffer)
+        buffer.append(work)
         if not firstStage:
             break
         minFirst = min(firstStage, key=lambda x: x.getTimeEndFirst())
     while TEST_DATA and len(firstStage) < FIRST_STAGE_SIZE:
         work = TEST_DATA.pop(0)
         work.timeFirst = currentTime
+        work.machineFirstId = len(firstStage)
         firstStage.append(work)
 
 
@@ -105,6 +130,29 @@ def low_grade() -> float:
     min_1 = min(TEST_DATA, key=lambda x: x.durationSecond).durationFirst
     min_2 = min(TEST_DATA, key=lambda x: x.durationSecond).durationSecond
     return min(sum_1 + min_2, sum_2 + min_1)
+
+
+def preparingCSV():
+    with open(f'gant/GANT-TEST-{TEST_NUM}-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.csv', 'w', newline='') as csvfile:
+        fieldnames = ['work_id', 'start_pick', 'finish_pick', 'start_buff', 'finish_buff', 'start_pack', 'finish_pack', 'pick_id', 'buff_id', 'pack_id',
+                      'real_time']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+        for work in RESULT_WORKS:
+            writer.writerow({
+                'work_id': work.id,
+                'start_pick': work.timeFirst,
+                'finish_pick': work.getTimeEndFirst(),
+                'start_buff': work.timeBuffer,
+                'finish_buff': work.timeSecond,
+                'start_pack': work.timeSecond,
+                'finish_pack': work.getTimeEndSecond(),
+                'pick_id': work.machineFirstId,
+                'buff_id': work.machineBufferId,
+                'pack_id': work.machineSecondId,
+                'real_time': work.durationFirst
+            })
 
 
 def main():
@@ -120,7 +168,8 @@ def main():
             minEndFirst = None
         minEndTime = minEndFirst
         if secondStage:
-            minEndSecond = min(secondStage)
+            minEndSecond = min(
+                secondStage, key=lambda x: x.getTimeEndSecond()).getTimeEndSecond()
             if minEndTime:
                 minEndTime = min(minEndSecond, minEndTime)
             else:
@@ -143,6 +192,7 @@ if __name__ == "__main__":
     start = time.time()
     result = main()
     print(f'Времени затрачено:{time.time() - start} с')
+    preparingCSV()
     print('Ответ', result)
     print('Нижняя оценка', th_low_grade)
     print('Отношение', result/th_low_grade)
