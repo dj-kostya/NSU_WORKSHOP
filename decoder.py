@@ -4,27 +4,12 @@ import time
 # Type hinting
 from typing import List
 
-#Logging 
+# Logging
 import logging
 from datetime import datetime
-logging.basicConfig(level=logging.DEBUG, filename=f'logs/logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
+logging.basicConfig(level=logging.DEBUG,
+                    filename=f'logs/logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
 logging.info('len(firstStage);len(buffer);len(secondStage);currentTime')
-
-TEST_SIZE: int = 2000
-TEST_NUM: int = 10
-TEST_PATH: str = 'tests/'
-TEST_DATA: list = []
-
-
-FIRST_STAGE_SIZE: int = 3
-SECOND_STAGE_SIZE: int = 3
-BUFFER_SIZE: int = 3
-
-
-currentTime: int = 0
-firstStage = []
-secondStage = []  # время освобождение
-buffer = []
 
 
 class Work:
@@ -36,6 +21,23 @@ class Work:
 
     def getTimeEndFirst(self) -> str:
         return self.timeFirst + self.durationFirst
+
+
+TEST_SIZE: int = 2000
+TEST_NUM: int = 10
+TEST_PATH: str = 'tests/'
+TEST_DATA: List[Work] = []
+
+
+FIRST_STAGE_SIZE: int = 3
+SECOND_STAGE_SIZE: int = 3
+BUFFER_SIZE: int = 3
+
+
+currentTime: int = 0
+firstStage: List[Work] = []
+secondStage: int = []  # время освобождение
+buffer: List[Work] = []
 
 
 def loadTests(file_path: str = None) -> List[Work]:
@@ -108,8 +110,9 @@ def low_grade() -> float:
 def main():
     global firstStage, buffer, secondStage, currentTime
     while True:
-        logging.debug(f'{len(firstStage)};{len(buffer)};{len(secondStage)};{currentTime}')
-       
+        logging.debug(
+            f'{len(firstStage)};{len(buffer)};{len(secondStage)};{currentTime}')
+
         if firstStage and len(buffer) < BUFFER_SIZE:
             minEndFirst = min(
                 firstStage, default=0, key=lambda x: x.getTimeEndFirst()).getTimeEndFirst()
