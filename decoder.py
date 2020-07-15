@@ -4,7 +4,7 @@ import time
 #Logging 
 import logging
 from datetime import datetime
-logging.basicConfig(level=logging.DEBUG, filename=f'logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
+logging.basicConfig(level=logging.DEBUG, filename=f'logs/logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
 logging.info('len(firstStage);len(buffer);len(secondStage);currentTime')
 
 TEST_SIZE = 2000
