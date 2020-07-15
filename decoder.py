@@ -1,41 +1,44 @@
 import os
 import time
 
+# Type hinting
+from typing import List
+
 #Logging 
 import logging
 from datetime import datetime
 logging.basicConfig(level=logging.DEBUG, filename=f'logs/logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
 logging.info('len(firstStage);len(buffer);len(secondStage);currentTime')
 
-TEST_SIZE = 2000
-TEST_NUM = 10
-TEST_PATH = 'tests/'
-TEST_DATA = []
+TEST_SIZE: int = 2000
+TEST_NUM: int = 10
+TEST_PATH: str = 'tests/'
+TEST_DATA: list = []
 
 
-FIRST_STAGE_SIZE = 3
-SECOND_STAGE_SIZE = 3
-BUFFER_SIZE = 3
+FIRST_STAGE_SIZE: int = 3
+SECOND_STAGE_SIZE: int = 3
+BUFFER_SIZE: int = 3
 
 
-currentTime = 0
+currentTime: int = 0
 firstStage = []
 secondStage = []  # время освобождение
 buffer = []
 
 
 class Work:
-    def __init__(self, id, durationFirst: int, durationSecond: int):
-        self.id = id
-        self.durationFirst = durationFirst
-        self.durationSecond = durationSecond
-        self.timeFirst = None
+    def __init__(self, id: int, durationFirst: int, durationSecond: int):
+        self.id: int = id
+        self.durationFirst: int = durationFirst
+        self.durationSecond: int = durationSecond
+        self.timeFirst: int = None
 
     def getTimeEndFirst(self) -> str:
         return self.timeFirst + self.durationFirst
 
 
-def loadTests(file_path: str = None) -> list:
+def loadTests(file_path: str = None) -> List[Work]:
     if file_path is None:
         file_path = TEST_PATH + f'inst{TEST_NUM}.txt'
     works = []
@@ -93,7 +96,7 @@ def updateFirst():
         firstStage.append(work)
 
 
-def low_grade():
+def low_grade() -> float:
     global firstStage, buffer, secondStage, currentTime
     sum_1 = sum([i.durationFirst for i in TEST_DATA])/FIRST_STAGE_SIZE
     sum_2 = sum([i.durationSecond for i in TEST_DATA])/SECOND_STAGE_SIZE
