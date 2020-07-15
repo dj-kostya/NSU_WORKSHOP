@@ -11,6 +11,14 @@ logging.basicConfig(level=logging.DEBUG,
                     filename=f'logs/logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
 logging.info('len(firstStage);len(buffer);len(secondStage);currentTime')
 
+# BASIC SETTINGS
+TEST_SIZE: int = 200
+TEST_NUM: int = 0
+FIRST_STAGE_SIZE: int = 3
+BUFFER_SIZE: int = 3
+SECOND_STAGE_SIZE: int = 3
+TEST_PATH: str = 'tests/'
+
 
 class Work:
     def __init__(self, id: int, durationFirst: int, durationSecond: int):
@@ -40,28 +48,9 @@ class Work:
         return (self.timeBuffer, self.timeSecond)
 
 
-TEST_SIZE: int = 200
-TEST_NUM: int = 0
-TEST_PATH: str = 'tests/'
-TEST_DATA: List[Work] = []
-
-
-FIRST_STAGE_SIZE: int = 3
-SECOND_STAGE_SIZE: int = 3
-BUFFER_SIZE: int = 3
-
-
-currentTime: int = 0
-firstStage: List[Work] = []
-secondStage: List[Work] = []  # время освобождение
-buffer: List[Work] = []
-
-RESULT_WORKS: List[Work] = []
-
-
-def loadTests(file_path: str = None) -> List[Work]:
+def loadTests(testNum: int, file_path: str = None) -> List[Work]:
     if file_path is None:
-        file_path = TEST_PATH + f'inst{TEST_NUM}.txt'
+        file_path = TEST_PATH + f'inst{testNum}.txt'
     works = []
     with open(file_path, 'r') as f:
         lines = f.readlines()[3:]
@@ -70,76 +59,14 @@ def loadTests(file_path: str = None) -> List[Work]:
     return works
 
 
-def updateSecond():
-    """
-        Function pop all ready tasks from second line
-    """
-    global secondStage, RESULT_WORKS
-    if not secondStage:
-        return
-    minSecond = min(secondStage, key=lambda x: x.getTimeEndSecond())
-    while currentTime >= minSecond.getTimeEndSecond():
-        minSecondIdx = secondStage.index(minSecond)
-        RESULT_WORKS.append(secondStage.pop(minSecondIdx))
-        if not secondStage:
-            return
-        minSecond = min(secondStage, key=lambda x: x.getTimeEndSecond())
-
-
-def updateBuffer():
-    """
-        Function pop from buffer to second line
-    """
-    global buffer, secondStage
-    if not buffer:
-        return
-    while len(secondStage) < SECOND_STAGE_SIZE and buffer:
-        work = buffer.pop(0)
-        work.timeSecond = currentTime
-        work.machineSecondId = len(secondStage)
-        secondStage.append(work)
-
-
-def updateFirst():
-    """
-        Function pop all ready tasks from first line to buffer. And if first line has free space then push work from TEST_DATA
-    """
-    global firstStage, buffer, secondStage, currentTime
-    if firstStage:
-        minFirst = min(firstStage, key=lambda x: x.getTimeEndFirst())
-    while firstStage and currentTime >= minFirst.getTimeEndFirst() and len(buffer) < BUFFER_SIZE:
-        minFirstIdx = firstStage.index(minFirst)
-        work = firstStage.pop(minFirstIdx)
-        work.timeBuffer = currentTime
-        work.machineBufferId = len(buffer)
-        buffer.append(work)
-        if not firstStage:
-            break
-        minFirst = min(firstStage, key=lambda x: x.getTimeEndFirst())
-    while TEST_DATA and len(firstStage) < FIRST_STAGE_SIZE:
-        work = TEST_DATA.pop(0)
-        work.timeFirst = currentTime
-        work.machineFirstId = len(firstStage)
-        firstStage.append(work)
-
-
-def low_grade() -> float:
-    global firstStage, buffer, secondStage, currentTime
-    sum_1 = sum([i.durationFirst for i in TEST_DATA])/FIRST_STAGE_SIZE
-    sum_2 = sum([i.durationSecond for i in TEST_DATA])/SECOND_STAGE_SIZE
-    min_1 = min(TEST_DATA, key=lambda x: x.durationSecond).durationFirst
-    min_2 = min(TEST_DATA, key=lambda x: x.durationSecond).durationSecond
-    return min(sum_1 + min_2, sum_2 + min_1)
-
-
-def preparingCSV():
-    with open(f'gant/GANT-TEST-{TEST_NUM}-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.csv', 'w', newline='') as csvfile:
+def preparingCSV(resultWorks: List[Work]):
+    with open(f'gant/GANT-TEST-{TEST_NUM}-{FIRST_STAGE_SIZE}-{BUFFER_SIZE}-{SECOND_STAGE_SIZE}.csv', 'w', newline='') as csvfile:
         fieldnames = ['work_id', 'start_pick', 'finish_pick', 'start_buff', 'finish_buff', 'start_pack', 'finish_pack', 'pick_id', 'buff_id', 'pack_id',
                       'real_time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         writer.writeheader()
-        for work in RESULT_WORKS:
+        for work in resultWorks:
             writer.writerow({
                 'work_id': work.id,
                 'start_pick': work.timeFirst,
@@ -155,44 +82,137 @@ def preparingCSV():
             })
 
 
-def main():
-    global firstStage, buffer, secondStage, currentTime
-    while True:
-        logging.debug(
-            f'{len(firstStage)};{len(buffer)};{len(secondStage)};{currentTime}')
+class BaseDecoder:
 
-        if firstStage and len(buffer) < BUFFER_SIZE:
-            minEndFirst = min(
-                firstStage, default=0, key=lambda x: x.getTimeEndFirst()).getTimeEndFirst()
-        else:
-            minEndFirst = None
-        minEndTime = minEndFirst
-        if secondStage:
-            minEndSecond = min(
-                secondStage, key=lambda x: x.getTimeEndSecond()).getTimeEndSecond()
-            if minEndTime:
-                minEndTime = min(minEndSecond, minEndTime)
+    def __init__(self, workList: List[Work], idxSequence: List[int], picker_size: int, buffer_size: int, packer_size: int):
+        self.workList: List[Work] = workList
+        self.idxSequence: List[int] = idxSequence
+        self.idxSequenceCopy: List[int] = idxSequence.copy()
+        self.PICKER_SIZE: int = picker_size
+        self.BUFFER_SIZE: int = buffer_size
+        self.PACKER_SIZE: int = packer_size
+        self.packageStage: List[Work] = []
+        self.pickStage: List[Work] = []
+        self.bufferStage: List[Work] = []
+
+        self.FREE_PICK_ID: List[int] = list(range(self.PICKER_SIZE))
+        self.FREE_PACK_ID: List[int] = list(range(self.PACKER_SIZE))
+        self.FREE_BUFFER_ID: List[int] = list(range(self.BUFFER_SIZE))
+        self.RESULT_WORKS: List[Work] = []
+
+        self.currentTime = 0
+
+    def getLowGrade(self) -> float:
+        sum_1 = sum(self.workList, key=lambda x: x.durationFirst) / \
+            self.PICKER_SIZE
+        sum_2 = sum(self.workList, key=lambda x: x.durationSecond) / \
+            self.PACKER_SIZE
+        min_1 = min(self.workList, key=lambda x: x.durationFirst).durationFirst
+        min_2 = min(self.workList,
+                    key=lambda x: x.durationSecond).durationSecond
+        return min(sum_1 + min_2, sum_2 + min_1)
+
+    def getMinimum(self, array: List[Work], key) -> Work:
+        return min(array, key=key)
+
+    def getMinimumPackage(self) -> Work:
+        return self.getMinimum(self.packageStage, key=lambda x: x.getTimeEndSecond())
+
+    def getMinimumPicking(self) -> Work:
+        return self.getMinimum(self.pickStage, key=lambda x: x.getTimeEndFirst())
+
+    def __updatePacking(self):
+        """
+            Function pop all ready tasks from second line
+        """
+        if not self.packageStage:
+            return
+        minSecond = self.getMinimumPackage()
+        while self.currentTime >= minSecond.getTimeEndSecond():
+            minSecondIdx = self.packageStage.index(minSecond)
+            work = self.packageStage.pop(minSecondIdx)
+            self.FREE_PACK_ID.append(work.machineSecondId)
+            self.RESULT_WORKS.append(work)
+            if not self.packageStage:
+                return
+            minSecond = self.getMinimumPackage()
+
+    def getIdxToPopFromBuffer(self, stage: int):
+        """
+            Function which choices which work will be pop from stage.
+        """
+        return 0
+
+    def __updateBuffer(self):
+        """
+            Function pop from buffer to second line
+        """
+        if not self.bufferStage:
+            return
+        while len(self.packageStage) < self.PACKER_SIZE and self.bufferStage:
+            work = self.bufferStage.pop(self.getIdxToPopFromBuffer(stage=1))
+            work.timeSecond = self.currentTime
+            work.machineSecondId = self.FREE_PACK_ID.pop()
+            self.FREE_BUFFER_ID.append(work.machineBufferId)
+            self.packageStage.append(work)
+
+    def __updatePicking(self):
+        if self.pickStage:
+            minFirst = self.getMinimumPicking()
+        while self.pickStage and self.currentTime >= minFirst.getTimeEndFirst() and len(self.bufferStage) < self.BUFFER_SIZE:
+            minFirstIdx = self.pickStage.index(minFirst)
+            work = self.pickStage.pop(minFirstIdx)
+            work.timeBuffer = self.currentTime
+            work.machineBufferId = self.FREE_BUFFER_ID.pop()
+            self.bufferStage.append(work)
+            self.FREE_PICK_ID.append(work.machineFirstId)
+            if not self.pickStage:
+                break
+            minFirst = self.getMinimumPicking()
+        while self.idxSequenceCopy and len(self.pickStage) < FIRST_STAGE_SIZE:
+            getNextIndex = self.idxSequenceCopy.pop()
+            work = self.workList[getNextIndex]
+            work.timeFirst = self.currentTime
+            work.machineFirstId = self.FREE_PICK_ID.pop()
+            self.pickStage.append(work)
+
+    def start(self):
+        while True:
+            if self.pickStage and len(self.bufferStage) < BUFFER_SIZE:
+                minEndTime = self.getMinimumPicking().getTimeEndFirst()
             else:
-                minEndTime = minEndSecond
+                minEndTime = None
 
-        currentTime = 0 if not minEndTime else minEndTime
-        updateSecond()
-        updateBuffer()
-        if TEST_DATA or firstStage:
-            updateFirst()
-            updateBuffer()
+            if self.packageStage:
+                minEndPacking = self.getMinimumPackage().getTimeEndSecond()
+                if minEndTime:
+                    minEndTime = min(minEndTime, minEndPacking)
+                else:
+                    minEndTime = minEndPacking
 
-        if not TEST_DATA and not firstStage and not secondStage:
-            return minEndTime
+            self.currentTime = minEndTime if minEndTime else 0
+            isFirst = True
+            while isFirst or (len(self.FREE_BUFFER_ID) < BUFFER_SIZE and len(self.FREE_PACK_ID) > 0):
+                self.__updatePacking()
+                self.__updateBuffer()
+                if self.idxSequenceCopy or self.pickStage:
+                    self.__updatePicking()
+                    self.__updateBuffer()
+                isFirst = False
+
+            if not self.idxSequenceCopy and not self.pickStage and not self.bufferStage and not self.packageStage:
+                return minEndTime
 
 
 if __name__ == "__main__":
-    TEST_DATA = loadTests()
-    th_low_grade = low_grade()
+
+    testData = loadTests(TEST_NUM)
+    decoder = BaseDecoder(testData, list(range(len(testData))), 3, 3, 3)
+    th_low_grade = decoder.getLowGrade()
     start = time.time()
-    result = main()
+    result = decoder.start()
     print(f'Времени затрачено:{time.time() - start} с')
-    preparingCSV()
+    preparingCSV(decoder.RESULT_WORKS)
     print('Ответ', result)
     print('Нижняя оценка', th_low_grade)
     print('Отношение', result/th_low_grade)
