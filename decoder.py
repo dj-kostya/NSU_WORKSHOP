@@ -47,6 +47,9 @@ def loadTests(file_path: str = None) -> list:
 
 
 def updateSecond():
+    """
+        Function pop all ready tasks from second line
+    """
     global secondStage
     if not secondStage:
         return
@@ -60,6 +63,9 @@ def updateSecond():
 
 
 def updateBuffer():
+    """
+        Function pop from buffer to second line
+    """
     global buffer, secondStage
     if not buffer:
         return
@@ -69,6 +75,9 @@ def updateBuffer():
 
 
 def updateFirst():
+    """
+        Function pop all ready tasks from first line to buffer. And if first line has free space then push work from TEST_DATA
+    """
     global firstStage, buffer, secondStage, currentTime
     if firstStage:
         minFirst = min(firstStage, key=lambda x: x.getTimeEndFirst())
@@ -97,7 +106,7 @@ def main():
     global firstStage, buffer, secondStage, currentTime
     while True:
         logging.debug(f'{len(firstStage)};{len(buffer)};{len(secondStage)};{currentTime}')
-        # print(len(firstStage), len(buffer), len(secondStage), currentTime)
+       
         if firstStage and len(buffer) < BUFFER_SIZE:
             minEndFirst = min(
                 firstStage, default=0, key=lambda x: x.getTimeEndFirst()).getTimeEndFirst()
