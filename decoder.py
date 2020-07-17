@@ -4,19 +4,8 @@ import csv
 # Type hinting
 from typing import List, Tuple
 
-# Logging
-import logging
-from datetime import datetime
-logging.basicConfig(level=logging.DEBUG,
-                    filename=f'logs/logs-{datetime.now().strftime("%d-%m-%Y-%H-%M-%S")}.logs', format='%(message)s')
-logging.info('len(firstStage);len(buffer);len(secondStage);currentTime')
 
 # BASIC SETTINGS
-TEST_SIZE: int = 200
-TEST_NUM: int = 0
-FIRST_STAGE_SIZE: int = 3
-BUFFER_SIZE: int = 3
-SECOND_STAGE_SIZE: int = 3
 TEST_PATH: str = 'tests/'
 
 
@@ -31,21 +20,19 @@ class Work:
         self.machineFirstId: int = None
         self.machineSecondId: int = None
         self.machineBufferId: int = None
+        self.timeEndFirst: int = None
+        self.timeEndSecond: int = None
+
 
     def getTimeEndFirst(self) -> str:
-        return self.timeFirst + self.durationFirst
+        if not self.timeEndFirst:
+            self.timeEndFirst =  self.timeFirst + self.durationFirst
+        return self.timeEndFirst
 
     def getTimeEndSecond(self) -> str:
-        return self.timeSecond + self.durationSecond
-
-    def getFirstTiming(self) -> Tuple[int, int]:
-        return (self.timeFirst, self.getTimeEndFirst())
-
-    def getSecondTiming(self) -> Tuple[int, int]:
-        return (self.timeSecond, self.getTimeEndSecond())
-
-    def getBufferTiming(self) -> Tuple[int, int]:
-        return (self.timeBuffer, self.timeSecond)
+        if not self.timeEndSecond:
+            self.timeEndSecond = self.timeSecond + self.durationSecond
+        return self.timeEndSecond
 
 
 def loadTests(testNum: int, file_path: str = None) -> List[Work]:
@@ -53,18 +40,19 @@ def loadTests(testNum: int, file_path: str = None) -> List[Work]:
         file_path = TEST_PATH + f'inst{testNum}.txt'
     works = []
     with open(file_path, 'r') as f:
-        lines = f.readlines()[3:]
-        for i in range(TEST_SIZE):
-            works.append(Work(i, int(lines[i]), int(lines[i+TEST_SIZE])))
+        allLines = f.readlines()
+        testSize = int(allLines[1])
+        lines = allLines[3:]
+        for i in range(testSize):
+            works.append(Work(i, int(lines[i]), int(lines[i+testSize])))
     return works
 
 
-def preparingCSV(resultWorks: List[Work]):
-    with open(f'gant/GANT-TEST-{TEST_NUM}-{FIRST_STAGE_SIZE}-{BUFFER_SIZE}-{SECOND_STAGE_SIZE}.csv', 'w', newline='') as csvfile:
+def preparingCSV(resultWorks: List[Work], testNum: int, targetValue: int):
+    with open(f'gant/GANT-TEST-{testNum}-{targetValue}.csv', 'w', newline='') as csvfile:
         fieldnames = ['work_id', 'start_pick', 'finish_pick', 'start_buff', 'finish_buff', 'start_pack', 'finish_pack', 'pick_id', 'buff_id', 'pack_id',
                       'real_time']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
         writer.writeheader()
         for work in resultWorks:
             writer.writerow({
@@ -87,7 +75,7 @@ class BaseDecoder:
     def __init__(self, workList: List[Work], idxSequence: List[int], picker_size: int, buffer_size: int, packer_size: int):
         self.workList: List[Work] = workList
         self.idxSequence: List[int] = idxSequence
-        self.idxSequenceCopy: List[int] = idxSequence.copy()
+
         self.PICKER_SIZE: int = picker_size
         self.BUFFER_SIZE: int = buffer_size
         self.PACKER_SIZE: int = packer_size
@@ -95,22 +83,56 @@ class BaseDecoder:
         self.pickStage: List[Work] = []
         self.bufferStage: List[Work] = []
 
-        self.FREE_PICK_ID: List[int] = list(range(self.PICKER_SIZE))
-        self.FREE_PACK_ID: List[int] = list(range(self.PACKER_SIZE))
-        self.FREE_BUFFER_ID: List[int] = list(range(self.BUFFER_SIZE))
+        self.FREE_PICK_ID: List[int] = []
+        self.FREE_PACK_ID: List[int] = []
+        self.FREE_BUFFER_ID: List[int] = []
         self.RESULT_WORKS: List[Work] = []
 
-        self.currentTime = 0
+        self.currentTime: int = 0
+        self.targetValue: int = 0
+
+        self.hasGoodWorks: bool = False
+        self.hasBadWorks: bool = False
+
+        self.goodWorks: List[int] = []
+        self.badWorks: List[int] = []
+
+    def getGoodBadWorks(self) -> None:
+        if self.hasGoodWorks and self.hasBadWorks:
+            return
+        for idx in self.idxSequence:
+            if self.workList[idx].timeBuffer - self.workList[idx].getTimeEndFirst() > 0:
+                self.badWorks.append(idx)
+            elif self.workList[idx].timeBuffer == self.workList[idx].getTimeEndFirst() and \
+                    self.workList[idx].timeSecond - self.workList[idx].timeBuffer == 0:
+                self.goodWorks.append(idx)
+        self.hasGoodWorks = True
+        self.hasBadWorks = True
+
+    def getGoodWorks(self) -> None:
+        if self.hasGoodWorks:
+            return
+        for idx in self.idxSequence:
+            if self.workList[idx].timeBuffer == self.workList[idx].getTimeEndFirst() and \
+                    self.workList[idx].timeSecond - self.workList[idx].timeBuffer == 0:
+                self.goodWorks.append(idx)
+        self.hasGoodWorks = True
+
+    def getBadWorks(self) -> None:
+        if self.hasBadWorks:
+            return
+        for idx in self.idxSequence:
+            if self.workList[idx].timeSecond - self.workList[idx].timeBuffer > 0:
+                self.badWorks.append(idx)
+        self.hasBadWorks = True
 
     def getLowGrade(self) -> float:
-        sum_1 = sum(self.workList, key=lambda x: x.durationFirst) / \
-            self.PICKER_SIZE
-        sum_2 = sum(self.workList, key=lambda x: x.durationSecond) / \
-            self.PACKER_SIZE
+        sum_1 = sum(x.durationFirst for x in self.workList) / self.PICKER_SIZE
+        sum_2 = sum(x.durationSecond for x in self.workList) / self.PACKER_SIZE
         min_1 = min(self.workList, key=lambda x: x.durationFirst).durationFirst
         min_2 = min(self.workList,
                     key=lambda x: x.durationSecond).durationSecond
-        return min(sum_1 + min_2, sum_2 + min_1)
+        return max(sum_1 + min_2, sum_2 + min_1)
 
     def getMinimum(self, array: List[Work], key) -> Work:
         return min(array, key=key)
@@ -120,6 +142,11 @@ class BaseDecoder:
 
     def getMinimumPicking(self) -> Work:
         return self.getMinimum(self.pickStage, key=lambda x: x.getTimeEndFirst())
+
+    def generateCSV(self, testNum: int) -> None:
+        print('Generating CSV file for ', self.targetValue)
+        preparingCSV(self.RESULT_WORKS, testNum=testNum,
+                     targetValue=self.targetValue)
 
     def __updatePacking(self):
         """
@@ -169,16 +196,23 @@ class BaseDecoder:
             if not self.pickStage:
                 break
             minFirst = self.getMinimumPicking()
-        while self.idxSequenceCopy and len(self.pickStage) < FIRST_STAGE_SIZE:
-            getNextIndex = self.idxSequenceCopy.pop()
+        while self.idxOfIdxSeq < self.seqLen and len(self.pickStage) < self.PICKER_SIZE:
+            getNextIndex = self.idxSequence[self.idxOfIdxSeq]
+            self.idxOfIdxSeq += 1
             work = self.workList[getNextIndex]
             work.timeFirst = self.currentTime
             work.machineFirstId = self.FREE_PICK_ID.pop()
             self.pickStage.append(work)
 
     def start(self):
+        self.FREE_PICK_ID: List[int] = list(range(self.PICKER_SIZE))
+        self.FREE_PACK_ID: List[int] = list(range(self.PACKER_SIZE))
+        self.FREE_BUFFER_ID: List[int] = list(range(self.BUFFER_SIZE))
+        self.idxOfIdxSeq: int = 0
+        self.seqLen = len(self.idxSequence)
+
         while True:
-            if self.pickStage and len(self.bufferStage) < BUFFER_SIZE:
+            if self.pickStage and len(self.bufferStage) < self.BUFFER_SIZE:
                 minEndTime = self.getMinimumPicking().getTimeEndFirst()
             else:
                 minEndTime = None
@@ -192,28 +226,33 @@ class BaseDecoder:
 
             self.currentTime = minEndTime if minEndTime else 0
             isFirst = True
-            while isFirst or (len(self.FREE_BUFFER_ID) < BUFFER_SIZE and len(self.FREE_PACK_ID) > 0):
+
+            while isFirst or (len(self.FREE_BUFFER_ID) < self.BUFFER_SIZE and len(self.FREE_PACK_ID) > 0):
                 self.__updatePacking()
                 self.__updateBuffer()
-                if self.idxSequenceCopy or self.pickStage:
+                if self.idxOfIdxSeq < self.seqLen or self.pickStage:
                     self.__updatePicking()
                     self.__updateBuffer()
                 isFirst = False
 
-            if not self.idxSequenceCopy and not self.pickStage and not self.bufferStage and not self.packageStage:
+            if not self.idxOfIdxSeq < self.seqLen and not self.pickStage and not self.bufferStage and not self.packageStage:
+                self.targetValue = minEndTime
                 return minEndTime
 
 
 if __name__ == "__main__":
-
+    TEST_NUM = 0
     testData = loadTests(TEST_NUM)
-    decoder = BaseDecoder(testData, list(range(len(testData))), 3, 3, 3)
+    seq = [79, 183, 9, 72, 29, 167, 74, 48, 28, 107, 61, 164, 80, 37, 120, 71, 87, 63, 127, 114, 51, 165, 135, 100, 125, 191, 34, 117, 123, 43, 130, 10, 3, 97, 56, 23, 134, 20, 24, 176, 153, 139, 103, 94, 146, 196, 30, 22, 14, 143, 26, 67, 83, 112, 92, 177, 53, 52, 57, 88, 91, 81, 116, 133, 186, 54, 102, 31, 55, 188, 44, 137, 105, 86, 25, 108, 192, 13, 180, 159, 16, 109, 160, 122, 141, 64, 157, 119, 6, 145, 47, 32, 132, 189, 197, 2, 11, 5, 170, 42, 85, 82, 110, 69, 62, 4, 1, 19, 96, 65, 182, 155, 136, 124, 95, 68, 84, 60, 169, 38, 161, 
+195, 129, 115, 33, 142, 138, 179, 77, 140, 154, 163, 184, 150, 121, 66, 173, 41, 144, 40, 58, 78, 178, 181, 0, 101, 158, 17, 39, 171, 174, 148, 15, 76, 113, 49, 172, 199, 98, 162, 152, 59, 126, 75, 194, 175, 27, 106, 185, 45, 198, 50, 168, 70, 187, 35, 18, 8, 128, 99, 7, 21, 166, 131, 149, 36, 190, 12, 104, 193, 111, 147, 151, 156, 93, 89, 90, 73, 46, 118]
+    decoder = BaseDecoder(testData,seq, 3, 3, 3)
     th_low_grade = decoder.getLowGrade()
     start = time.time()
     result = decoder.start()
     print(f'Времени затрачено:{time.time() - start} с')
-    preparingCSV(decoder.RESULT_WORKS)
-    print('Ответ', result)
+    preparingCSV(decoder.RESULT_WORKS, testNum=TEST_NUM,
+                 targetValue=decoder.targetValue)
+    print('Ответ', decoder.targetValue)
     print('Нижняя оценка', th_low_grade)
     print('Отношение', result/th_low_grade)
     print('Разность', result - th_low_grade)
