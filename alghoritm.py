@@ -14,17 +14,17 @@ from tqdm import tqdm
 TARGER_RESULT = 1.3
 
 NUMBER_ITERATIONS: int = 1500
-TEST_NUM: int = 0
+TEST_NUM: int = 9
 PICKER_SIZE: int = 3
 PACKER_SIZE: int = 3
 BUFFER_SIZE: int = 3
 
 
-POPULATIONS_SIZE: int = 10
-GREED_SIZE: int = 90
+POPULATIONS_SIZE: int = 20
+GREED_SIZE: int = 80
 
 LOCAL_SEARCH_ITERATIONS_SIZE: int = 2
-LOCAL_SEARCH_POPULATION_SIZE: int = 10
+LOCAL_SEARCH_POPULATION_SIZE: int = 15
 WORK_LIST: List[Work] = loadTests(TEST_NUM)
 
 
@@ -49,17 +49,21 @@ def getNewSequence(firstDecoderIdx: int, secondDecoderIdx: int, decoders: List[B
 
 
 def getNewDecoder(newSequence) -> BaseDecoder:
-    decoder = BaseDecoder(loadTests(TEST_NUM), newSequence, picker_size=PICKER_SIZE,
+    decoder = BaseDecoder(WORK_LIST, newSequence, picker_size=PICKER_SIZE,
                           buffer_size=BUFFER_SIZE, packer_size=PACKER_SIZE)
     decoder.start()
     return decoder
 
+def getRandomId():
+    return random.randint(0, POPULATIONS_SIZE-1)
 
 def getTwoSequenceID(decoders: List[BaseDecoder]) -> Tuple[int, int]:
     s1, s2 = 0, 0
     while s1 == s2:
-        s1 = random.randint(0, POPULATIONS_SIZE-1)
-        s2 = random.randint(0, POPULATIONS_SIZE-1)
+        s1 = getBestResultID(decoders)
+        s2 = getWorstResultID(decoders)
+        if s1 == s2:
+            s1 = getRandomId()
     return s1, s2
 
 
@@ -103,7 +107,6 @@ def genBasePopulation() -> List[BaseDecoder]:
     # заполняем популяцию
     for population in populations:
         decoders.append(getNewDecoder(population.copy()))
-    print(populations[3], decoders[3].targetValue)
     # генерируем новые решения и изменяем популяцию
     for _ in range(GREED_SIZE - POPULATIONS_SIZE):
         baseIdxSeq = list(range(len(WORK_LIST)))
@@ -131,10 +134,10 @@ def decodersOut(decoders: List[BaseDecoder], isOnlyStat: bool = False, isOnlyArr
         print('-'*30)
 
 
-def GenAlgoritm():
+def GenAlgoritm(isNeedArrayOut: bool = True):
     decoders: List[BaseDecoder] = genBasePopulation()
-
-    decodersOut(decoders)
+    if isNeedArrayOut:
+        decodersOut(decoders)
 
     for _ in tqdm(range(NUMBER_ITERATIONS), total=NUMBER_ITERATIONS, desc='Iterations: '):
         s1, s2 = getTwoSequenceID(decoders)
@@ -147,17 +150,22 @@ def GenAlgoritm():
 
         if newDecoder.targetValue < decoders[worstResultId].targetValue:
             decoders[worstResultId] = newDecoder
-
-    decodersOut(decoders, isOnlyArray=True)
+    if isNeedArrayOut:
+        decodersOut(decoders, isOnlyArray=True)
     bestDecoder = getBestResult(decoders)
     print('Лучший результат до локального поиска: ', bestDecoder.targetValue)
     newDecoder = useLocalSearch(bestDecoder)
-    newDecoder.generateCSV(TEST_NUM)
+    
     decoders.append(newDecoder)
     decodersOut(decoders, isOnlyStat=True)
-
+    return newDecoder
 
 if __name__ == "__main__":
+    WORK_LIST: List[Work] = loadTests(TEST_NUM)
     start = time.time()
-    GenAlgoritm()
+    bestDecoder = GenAlgoritm()
     print(f'Времени затрачено:{time.time() - start} сек.')
+    sep = ','
+    filename = bestDecoder.generateCSV(TEST_NUM, sep=sep)
+    # from gant import genGant
+    # genGant(filename, sep=sep)

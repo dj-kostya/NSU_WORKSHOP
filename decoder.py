@@ -3,7 +3,7 @@ import time
 import csv
 # Type hinting
 from typing import List, Tuple
-
+import copy
 
 # BASIC SETTINGS
 TEST_PATH: str = 'tests/'
@@ -34,6 +34,8 @@ class Work:
             self.timeEndSecond = self.timeSecond + self.durationSecond
         return self.timeEndSecond
 
+    def getNewInstance(self):
+        return Work(id = self.id,durationFirst = self.durationFirst, durationSecond=self.durationSecond)
 
 def loadTests(testNum: int, file_path: str = None) -> List[Work]:
     if file_path is None:
@@ -48,11 +50,12 @@ def loadTests(testNum: int, file_path: str = None) -> List[Work]:
     return works
 
 
-def preparingCSV(resultWorks: List[Work], testNum: int, targetValue: int):
-    with open(f'gant/GANT-TEST-{testNum}-{targetValue}.csv', 'w', newline='') as csvfile:
+def preparingCSV(resultWorks: List[Work], testNum: int, targetValue: int, lowGrade, sep=',') -> str:
+    filename = f'gant/GANT-TEST-{testNum}-{targetValue}-low-{str(lowGrade).replace(".", "_")}.csv'
+    with open(filename, 'w', newline='') as csvfile:
         fieldnames = ['work_id', 'start_pick', 'finish_pick', 'start_buff', 'finish_buff', 'start_pack', 'finish_pack', 'pick_id', 'buff_id', 'pack_id',
                       'real_time']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=sep)
         writer.writeheader()
         for work in resultWorks:
             writer.writerow({
@@ -68,7 +71,7 @@ def preparingCSV(resultWorks: List[Work], testNum: int, targetValue: int):
                 'pack_id': work.machineSecondId,
                 'real_time': work.durationFirst
             })
-
+    return filename
 
 class BaseDecoder:
 
@@ -143,10 +146,10 @@ class BaseDecoder:
     def getMinimumPicking(self) -> Work:
         return self.getMinimum(self.pickStage, key=lambda x: x.getTimeEndFirst())
 
-    def generateCSV(self, testNum: int) -> None:
-        print('Generating CSV file for ', self.targetValue)
-        preparingCSV(self.RESULT_WORKS, testNum=testNum,
-                     targetValue=self.targetValue)
+    def generateCSV(self, testNum: int, sep=',') -> str:
+        print('Generating CSV file for', self.targetValue)
+        return preparingCSV(self.RESULT_WORKS, testNum=testNum,
+                     targetValue=self.targetValue, lowGrade=self.getLowGrade(), sep=sep)
 
     def __updatePacking(self):
         """
@@ -199,7 +202,8 @@ class BaseDecoder:
         while self.idxOfIdxSeq < self.seqLen and len(self.pickStage) < self.PICKER_SIZE:
             getNextIndex = self.idxSequence[self.idxOfIdxSeq]
             self.idxOfIdxSeq += 1
-            work = self.workList[getNextIndex]
+            # work = copy.copy(self.workList[getNextIndex])
+            work = self.workList[getNextIndex].getNewInstance()
             work.timeFirst = self.currentTime
             work.machineFirstId = self.FREE_PICK_ID.pop()
             self.pickStage.append(work)
@@ -251,7 +255,7 @@ if __name__ == "__main__":
     result = decoder.start()
     print(f'Времени затрачено:{time.time() - start} с')
     preparingCSV(decoder.RESULT_WORKS, testNum=TEST_NUM,
-                 targetValue=decoder.targetValue)
+                 targetValue=decoder.targetValue, lowGrade=decoder.getLowGrade())
     print('Ответ', decoder.targetValue)
     print('Нижняя оценка', th_low_grade)
     print('Отношение', result/th_low_grade)
