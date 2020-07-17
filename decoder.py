@@ -125,7 +125,7 @@ class BaseDecoder:
         if self.hasBadWorks:
             return
         for idx in self.idxSequence:
-            if self.workList[idx].timeSecond - self.workList[idx].timeBuffer > 0:
+            if self.RESULT_WORKS[idx].timeSecond - self.RESULT_WORKS[idx].timeBuffer > 0:
                 self.badWorks.append(idx)
         self.hasBadWorks = True
 

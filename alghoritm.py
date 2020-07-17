@@ -1,7 +1,7 @@
 
 from decoder import BaseDecoder, loadTests, Work
 from typing import List, Tuple
-from crossovers import OX, PMX
+from crossovers import OX, PMX, smartCross
 
 import random
 
@@ -45,7 +45,8 @@ def getBestResultID(decoders: List[BaseDecoder]) -> int:
 
 
 def getNewSequence(firstDecoderIdx: int, secondDecoderIdx: int, decoders: List[BaseDecoder]) -> List[int]:
-    return OX(decoders[firstDecoderIdx].idxSequence, decoders[secondDecoderIdx].idxSequence)
+    # return OX(decoders[firstDecoderIdx].idxSequence, decoders[secondDecoderIdx].idxSequence)
+    return smartCross(decoders[firstDecoderIdx], decoders[secondDecoderIdx])
 
 
 def getNewDecoder(newSequence) -> BaseDecoder:
@@ -60,10 +61,10 @@ def getRandomId():
 def getTwoSequenceID(decoders: List[BaseDecoder]) -> Tuple[int, int]:
     s1, s2 = 0, 0
     while s1 == s2:
-        s1 = getBestResultID(decoders)
-        s2 = getWorstResultID(decoders)
+        s2 = getBestResultID(decoders)
+        s1 = getWorstResultID(decoders)
         if s1 == s2:
-            s1 = getRandomId()
+            s2 = getRandomId()
     return s1, s2
 
 
